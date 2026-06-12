@@ -1,0 +1,36 @@
+{
+  "name": "TaskPulse — স্মার্ট রিমাইন্ডার",
+  "short_name": "TaskPulse",
+  "description": "Daily task reminder with voice notification",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#39ff14",
+  "orientation": "portrait-primary",
+  "lang": "bn",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "নতুন কাজ যোগ করুন",
+      "short_name": "যোগ করুন",
+      "description": "Quickly add a new task",
+      "url": "./index.html#add"
+    }
+  ]
+}
