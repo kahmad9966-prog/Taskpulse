@@ -114,3 +114,39 @@ self.addEventListener('notificationclick', e => {
     })
   );
 });
+
+// ─── Reschedule recurring (daily/weekdays) triggered notifications ──
+// Fires right after a TimestampTrigger-based notification is shown,
+// so we can queue up the *next* occurrence for daily/weekday tasks.
+self.addEventListener('notificationclose', e => {
+  const data = e.notification.data;
+  if (!data || !data.repeat || data.repeat === 'once') return;
+  e.waitUntil(scheduleNext(data));
+});
+
+async function scheduleNext(data) {
+  if (!('showTrigger' in Notification.prototype)) return;
+  try {
+    const [h, m] = data.time.split(':').map(Number);
+    const now = new Date();
+    let target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, h, m, 0, 0);
+
+    if (data.repeat === 'weekdays') {
+      while (target.getDay() === 0 || target.getDay() === 6) {
+        target.setDate(target.getDate() + 1);
+        target.setHours(h, m, 0, 0);
+      }
+    }
+
+    await self.registration.showNotification('⏰ ' + data.name, {
+      body: 'রিমাইন্ডার সময় হয়েছে!',
+      icon: './icon-192.png',
+      badge: './icon-192.png',
+      tag: 'taskpulse-' + data.taskId,
+      renotify: true,
+      vibrate: [200, 100, 200, 100, 200],
+      showTrigger: new TimestampTrigger(target.getTime()),
+      data: data
+    });
+  } catch (err) { /* trigger scheduling failed, ignore */ }
+}
