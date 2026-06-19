@@ -961,6 +961,70 @@ function setLang(lang) {
   updateStats();
 }
 
+// ─── OS-level Scheduled Notification (works even if app/browser closed on Android) ──
+function supportsTriggers() {
+  return ('Notification' in window) && ('showTrigger' in Notification.prototype);
+}
+
+function nextOccurrence(timeStr, repeat) {
+  // timeStr = "HH:MM" (24h, from <input type=time>)
+  const [h, m] = timeStr.split(':').map(Number);
+  const now = new Date();
+  let target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+
+  if (repeat === 'weekdays') {
+    // push forward until it's today-or-future AND a weekday (Mon-Fri)
+    while (target <= now || target.getDay() === 0 || target.getDay() === 6) {
+      target.setDate(target.getDate() + 1);
+      target.setHours(h, m, 0, 0);
+    }
+  } else {
+    // daily or once: just push to tomorrow if time already passed today
+    if (target <= now) target.setDate(target.getDate() + 1);
+  }
+  return target;
+}
+
+async function scheduleTaskNotification(task) {
+  if (!supportsTriggers()) return false;
+  if (!swRegistration) return false;
+  try {
+    const target = nextOccurrence(task.time, task.repeat);
+    await swRegistration.showNotification('⏰ ' + task.name, {
+      body: 'রিমাইন্ডার সময় হয়েছে!',
+      icon: './icon-192.png',
+      badge: './icon-192.png',
+      tag: 'taskpulse-' + task.id,
+      renotify: true,
+      vibrate: [200, 100, 200, 100, 200],
+      showTrigger: new TimestampTrigger(target.getTime()),
+      data: { taskId: task.id, time: task.time, repeat: task.repeat, name: task.name, lang: task.lang }
+    });
+    return true;
+  } catch (err) {
+    console.warn('Notification trigger failed:', err);
+    return false;
+  }
+}
+
+async function cancelTaskNotification(taskId) {
+  if (!swRegistration) return;
+  try {
+    const notifs = await swRegistration.getNotifications({ tag: 'taskpulse-' + taskId, includeTriggered: true });
+    notifs.forEach(n => n.close());
+  } catch (err) { /* ignore */ }
+}
+
+async function rescheduleAllTasks() {
+  if (!supportsTriggers() || !swRegistration) return;
+  // Clear any old scheduled notifications first, then reschedule from current task list
+  try {
+    const all = await swRegistration.getNotifications({ includeTriggered: true });
+    all.forEach(n => { if (n.tag && n.tag.startsWith('taskpulse-')) n.close(); });
+  } catch (err) { /* ignore */ }
+  tasks.forEach(task => { if (!task.done) scheduleTaskNotification(task); });
+}
+
 // ─── Save ─────────────────────────────────────────────────
 function save() {
   localStorage.setItem('taskpulse_tasks', JSON.stringify(tasks));
@@ -992,6 +1056,8 @@ function addTask() {
   };
   tasks.push(task);
   save(); renderTasks(); updateStats();
+  scheduleTaskNotification(task);
+  syncTasksToSW();
   document.getElementById('task-name').value = '';
   document.getElementById('task-time').value = '';
   showToast(t.toastAdded);
@@ -1059,11 +1125,19 @@ function formatTime(t) {
 // ─── Toggle / Delete ─────────────────────────────────────
 function toggleDone(id) {
   const task = tasks.find(t => t.id === id);
-  if (task) { task.done = !task.done; save(); renderTasks(); updateStats(); }
+  if (task) {
+    task.done = !task.done;
+    save(); renderTasks(); updateStats();
+    syncTasksToSW();
+    if (task.done) cancelTaskNotification(id);
+    else scheduleTaskNotification(task);
+  }
 }
 function deleteTask(id) {
+  cancelTaskNotification(id);
   tasks = tasks.filter(t => t.id !== id);
   save(); renderTasks(); updateStats();
+  syncTasksToSW();
   showToast(i18n[currentLang].toastDeleted);
 }
 function clearDone() {
@@ -1300,6 +1374,10 @@ if ('serviceWorker' in navigator) {
           Notification.requestPermission();
         }
         syncTasksToSW();
+        rescheduleAllTasks();
+        if (!supportsTriggers()) {
+          console.warn('⚠️ এই ব্রাউজারে background notification trigger সাপোর্ট নেই। App খোলা রাখলে রিমাইন্ডার কাজ করবে।');
+        }
       })
       .catch(err => console.warn('SW registration failed:', err));
   });
