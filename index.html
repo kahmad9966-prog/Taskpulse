@@ -1288,11 +1288,30 @@ renderTasks();
 updateStats();
 
 // ─── Service Worker (PWA Support) ────────────────────────
+let swRegistration = null;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('✅ TaskPulse SW registered:', reg.scope))
+      .then(reg => {
+        console.log('✅ TaskPulse SW registered:', reg.scope);
+        swRegistration = reg;
+        // Ask for notification permission
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
+        syncTasksToSW();
+      })
       .catch(err => console.warn('SW registration failed:', err));
+  });
+}
+
+// Send current task list to the Service Worker so it can check
+// for due reminders even while the app is backgrounded.
+function syncTasksToSW() {
+  if (!navigator.serviceWorker.controller) return;
+  navigator.serviceWorker.controller.postMessage({
+    type: 'SYNC_TASKS',
+    tasks: tasks
   });
 }
 
